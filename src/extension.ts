@@ -15,7 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
   timeTrackingData = context.globalState.get<TimeTrackingData>(`${extPrefix}.timeTrackingData`, {});
   currentFileExt = getCurrentExtension();
   if (currentFileExt) {
-    startTime = new Date(Date.now() - (timeTrackingData[currentFileExt] || 0) * 1000);
+    startTime = new Date();
   }
 
   if (!statusBarItem) {
@@ -41,8 +41,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 function getCurrentExtension() {
   const activeEditor = vscode.window.activeTextEditor;
-  // vscode.window.showInformationMessage(`Scheme: ${activeEditor?.document.uri.scheme}`);
-  // Make sure the file is a file and not a terminal or output, must be a text file.
   if (activeEditor && activeEditor.document.uri.scheme === 'file') {
     const fileName = activeEditor.document.fileName;
     const ext = fileName.split('.').pop();
@@ -52,37 +50,28 @@ function getCurrentExtension() {
 }
 
 function updateCurrentLanguage() {
-  // if (!startTime) return;
-
-  if (currentFileExt) {
+  if (startTime && currentFileExt) {
     const endTime = new Date();
-    const codingTime = startTime
-      ? Math.floor((endTime.getTime() - startTime.getTime()) / 1000)
-      : (timeTrackingData[currentFileExt] ??= 0);
-    timeTrackingData[currentFileExt] = codingTime;
+    const codingTime = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+    timeTrackingData[currentFileExt] = (timeTrackingData[currentFileExt] || 0) + codingTime;
   }
 
   currentFileExt = getCurrentExtension();
 
   if (currentFileExt) {
-    startTime = new Date(Date.now() - (timeTrackingData[currentFileExt] ?? 0) * 1000);
-    // vscode.window.showInformationMessage(`Switched to ${currentFileExt}.`);
-  }
-  else {
+    startTime = new Date();
+  } else {
     startTime = null;
   }
 }
 
 function updateStatusBar() {
-  if (statusBarItem) {
+  if (statusBarItem && startTime) {
     const ext = currentFileExt || '<Unk>';
-    if (startTime) {
-      const elapsed = Math.floor((new Date().getTime() - startTime.getTime()) / 1000);
-      statusBarItem.text = `${ext.toUpperCase()}: ${timestamp(elapsed)}`;
-    }
-    else {
-      statusBarItem.text = `Code Time Tracker`;
-    }
+    const elapsed = Math.floor((new Date().getTime() - startTime.getTime()) / 1000);
+    statusBarItem.text = `${ext.toUpperCase()}: ${timestamp(elapsed)}`;
+  } else {
+    if (statusBarItem) statusBarItem.text = `Code Time Tracker`;
   }
   setTimeout(updateStatusBar, 1000);
 }
@@ -91,11 +80,9 @@ function saveData(context: vscode.ExtensionContext) {
   if (startTime && currentFileExt) {
     const endTime = new Date();
     const codingTime = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
-    if (!timeTrackingData[currentFileExt]) {
-      timeTrackingData[currentFileExt] = 0;
-    }
-    timeTrackingData[currentFileExt] = codingTime;
+    timeTrackingData[currentFileExt] = (timeTrackingData[currentFileExt] || 0) + codingTime;
     context.globalState.update(`${extPrefix}.timeTrackingData`, timeTrackingData);
+    startTime = null;
   }
 }
 
@@ -120,17 +107,18 @@ function showTimeTrackingData() {
   outputChannel.appendLine('Time spent on each file type:');
 
   if (startTime && currentFileExt) {
-    timeTrackingData[currentFileExt] = Math.floor((new Date().getTime() - startTime.getTime()) / 1000);
+    const elapsed = Math.floor((new Date().getTime() - startTime.getTime()) / 1000);
+    timeTrackingData[currentFileExt] = (timeTrackingData[currentFileExt] || 0) + elapsed;
   }
   
   for (const fileExt in timeTrackingData) {
     if (timeTrackingData.hasOwnProperty(fileExt)) {
       const timeInSeconds = timeTrackingData[fileExt];
-      outputChannel.appendLine(`${fileExt}: ${timestamp(timeInSeconds)} seconds`);
+      outputChannel.appendLine(`${fileExt}: ${timestamp(timeInSeconds)}`);
     }
   }
   const total = Object.values(timeTrackingData).reduce((acc, val) => acc + val, 0);
-  outputChannel.appendLine(`Total time: ${timestamp(total)} seconds`);
+  outputChannel.appendLine(`Total time: ${timestamp(total)}`);
   outputChannel.show();
 }
 
